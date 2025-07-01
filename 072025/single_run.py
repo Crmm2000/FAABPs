@@ -4,15 +4,15 @@ import Visuals as V #as name implies
 
 # parameters
 R_small_potential = 5 #size small repulsive potential, for iso oreo
-n_particles = 1000 #amount of particles in system (including potentials)
+n_particles = 100 #amount of particles in system (including potentials)
 v_0 = 10 #self propulsion speed
 curvity = -1
 stiffness = 10
 persistence_length = 5
 
 t_end, dt = 10, 1e-3 #check whether timesteps are sufficient, minimal 1e-3 WCA potential
-L = 200 #boxsize
-N = 2 #3 in next version
+L = 100 #boxsize
+N = 3 #3d only deterministic
 
 interacting = True
 mode = None #or: 'Iso_oreo', 'Arrhenius', for both interacting is set to false
@@ -35,5 +35,6 @@ params = data['Params']
 file_name = 'Test'
 frames_visualized = 50 #amount of timesteps (stored, see datasave param main code) between each frame
 fps = 40 #frames per second
-V.save_fig(trajectories[:,:,:N], trajectories[:,:,N].T, params, frames_visualized
+V.save_fig(trajectories[:,:,:N], trajectories[:,:,N-1].T, params, frames_visualized
            , fps, f'{file_name}', N = N, live = False, view = None)
+
