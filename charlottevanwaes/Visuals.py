@@ -1,5 +1,5 @@
 import numpy as np
-import time #tracks time
+import time 
 
 # packages for visualisation
 import matplotlib.pyplot as plt
