@@ -40,6 +40,7 @@ def simulate_system(radius_repulsive_potential, n_particles, v_0, curvity, persi
 
     #main simulation loop
     for i in tqdm(range(n-1)):  # Loop through timesteps
+        
         # Position and orientation update with Euler integration (vectorized)
         cos_theta, sin_theta = np.cos(trajectories[:, i, N]), np.sin(trajectories[:, i, N]) #index N itself  is the orientation
         if N ==2:
@@ -62,11 +63,10 @@ def simulate_system(radius_repulsive_potential, n_particles, v_0, curvity, persi
                 distances = np.linalg.norm(u.pbc_distance(trajectories[j, i+1, :N], trajectories[:, i+1, :N], boundary), axis=1)
                 storage_occupancy[j] = len(np.where(distances < (b[j] + 1.1))[0])-1 
 
-    # calculate filling fraction, if there; outside of repulsive potentials
-    #hypersphere
-    space_repulsive_potentials = np.sum((np.pi**(N/2)/math.gamma(N/2 + 1)) * b[:n_potentials]**N)
+    # Calculate filling fraction, if there; outside of repulsive potentials
+    space_repulsive_potentials = np.sum((np.pi**(N/2)/math.gamma(N/2 + 1)) * b[:n_potentials]**N) #hypersphere
     free_box_space = boundary**N - space_repulsive_potentials #space where particles live
-    space_particles = np.sum((np.pi**(N/2)/math.gamma(N/2 + 1)) * b[n_potentials:]**N)
+    space_particles = np.sum((np.pi**(N/2)/math.gamma(N/2 + 1)) * b[n_potentials:]**N) #hypersphere
     filling_fraction = space_particles/free_box_space # space particles/box_space: box_space = L**2 - repulsive potentials
     
     #saving data
@@ -120,6 +120,7 @@ def compute_pairwise_forces(n_particles, current_positions, radius_particles, st
     # Compute pairwise displacement vectors and apply periodic boundaries    
     r1, r2 = current_positions[:, np.newaxis, :], current_positions[np.newaxis, :, :] #shape (n_particles, 1, N), (1, n_particles, N), for broadcasting
     rij = u.pbc_distance(r1, r2, boundary)  # shape (n_particles, n_particles, N) -> 2D vector, center to center
+    
     #absolute distances
     rij_abs = np.linalg.norm(rij, axis=2)  # shape (n_particles, n_particles)
     np.fill_diagonal(rij_abs, np.inf) #to make sure that the force calculated on itself is 0
@@ -128,22 +129,17 @@ def compute_pairwise_forces(n_particles, current_positions, radius_particles, st
     if (mode == 'Iso_oreo') or mode == 'Arrhenius':
         rij_sub = rij[:n_potentials, n_potentials:]    
         rij_abs_sub = rij_abs[:n_potentials, n_potentials:]  
-        radii_sum = radius_particles[:n_potentials] + radius_particles[n_potentials:].T  # (3, n_particles-3)
-        gamma = np.where(rij_abs_sub <= radii_sum, np.exp(stiffness[:n_potentials] * (1 - rij_abs_sub / radii_sum)), 0.0)  # (3, n_particles-3)
+        radii_sum = radius_particles[:n_potentials] + radius_particles[n_potentials:].T  # (n_potentials, n_particles-n_potentials)
+        
         #harmonic
-        gamma = np.where(rij_abs_sub <= radii_sum, (stiffness[:n_potentials]/2)*(radii_sum-rij_abs_sub)**2,0.0)#np.exp(stiffness[:n_potentials] * (1 - rij_abs_sub / radii_sum)), 0.0)  # (3, n_particles-3)
+        gamma = np.where(rij_abs_sub <= radii_sum, (stiffness[:n_potentials]/2)*(radii_sum-rij_abs_sub)**2,0.0)#np.exp(stiffness[:n_potentials] * (1 - rij_abs_sub / radii_sum)), 0.0)  # (n_potentials, n_particles-n_potentials)
 
-        forces = gamma[:, :, np.newaxis] * rij_sub / (rij_abs_sub[:, :, np.newaxis] + epsilon)  # (3, n_particles-3, 2)
-        # Sum forces acting on particles 0–2
-        f[:n_potentials] += np.sum(forces, axis=1)  # sum over the second axis (N-3)
-        f[n_potentials:] -= np.sum(forces.transpose(1, 0, 2), axis=1) #(n_particles-3, 3, 2)
+        forces = gamma[:, :, np.newaxis] * rij_sub / (rij_abs_sub[:, :, np.newaxis] + epsilon)  # (n_particles, n_particles-n_potentials, N)
+        f[:n_potentials] += np.sum(forces, axis=1)  # sum over the second axis 
+        f[n_potentials:] -= np.sum(forces.transpose(1, 0, 2), axis=1) #(n_particles-n_potentials, n_potentials, N)
     else:
         radii_sum = radius_particles + radius_particles.T # shape (n_particles, n_particles)
-        #gamma = np.where(rij_abs<= radii_sum, np.exp(stiffness * (1 - rij_abs / radii_sum)), 0.0) # shape (n_particles, n_particles)
-        #WCA
-        gamma = np.where(rij_abs<2**(1/6)*2, 4 * (((radius_particles*2)/rij_abs)**12-((radius_particles*2)/rij_abs)**6)+1, 0.0)
-        #steric
-        # gamma = np.where(rij_abs<= radii_sum, stiffness * (radii_sum-rij_abs), 0.0)
+        gamma = np.where(rij_abs<2**(1/6)*2, 4 * (((radius_particles*2)/rij_abs)**12-((radius_particles*2)/rij_abs)**6)+1, 0.0) #WCA
         forces = gamma[:, :, np.newaxis] * rij / (rij_abs[:, :, np.newaxis] + epsilon)  # (n_particles, n_particles, N)
         f += np.sum(forces, axis=1)  # sum over the second axis: shape (n_particles, N)
     return f
@@ -187,18 +183,18 @@ def update_orientation(e, persistence_length, particles_vel, dt, curvity, Dr, N,
         j_hat = e[:, 0] * cross_3d_1[:, 2] - e[:, 2] * cross_3d_1[:, 0]
         k_hat = e[:, 0] * cross_3d_1[:, 1] - e[:, 1] * cross_3d_1[:, 0]
         cross_3d_2 = np.stack([i_hat, -j_hat, k_hat], axis = 1) #shape: n_particles, N
-        #change = cross[:, None] * curvity[:, None] * np.array([-e[1], e[0]]).T  # shape: (n_particles, 2), vectorized so it's broadcasted
         change = cross_3d_2 * curvity
-        # updates the e array for all particles simultaneously
         e += change * dt  # shape: (2, n_particles)
 
+        #todo, fix stochastic part
+        
         norm = np.linalg.norm(e,axis=1)
         e /= norm[:, np.newaxis] 
         theta = np.arctan2(e[:, 1], e[:, 0]) 
         phi = np.arccos(e[:, 2]) 
         dof = np.stack([theta, phi], axis = 1) #theta, phi
 
-    return dof #shape (n_particles, 2)
+    return dof #shape (n_particles, N-1)
 
 
 #todo numba, neighbour list, option for RK
