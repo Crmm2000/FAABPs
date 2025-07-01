@@ -42,8 +42,12 @@ def simulate_system(radius_repulsive_potential, n_particles, v_0, curvity, persi
     for i in tqdm(range(n-1)):  # Loop through timesteps
         # Position and orientation update with Euler integration (vectorized)
         cos_theta, sin_theta = np.cos(trajectories[:, i, N]), np.sin(trajectories[:, i, N]) #index N itself  is the orientation
-        e = np.stack([cos_theta, sin_theta], axis=1) #shape e (n_particles, 2)            
-        
+        if N ==2:
+            e = np.stack([cos_theta, sin_theta], axis=1) #shape e (n_particles, 2)            
+        #add extra degree of freedom in orientation for 3D
+        elif N ==3:
+            cos_phi, sin_phi = np.cos(trajectories[:, i, N+1]), np.sin(trajectories[:, i, N+1])
+            e = np.stack([sin_phi * cos_theta, sin_phi * sin_theta, cos_phi], axis=1) #shape e (n_particles, 3)  
         #update positions and orientations
         trajectories[:, i+1, :N] = update_positions(trajectories[:, i, :N], e, params_particles, params_system, interacting=interacting, mode=mode) 
         particles_vel = (trajectories[:, i+1, :N] - trajectories[:, i, :N]) / dt #calculate velocity before the periodic boundary condition
@@ -169,6 +173,27 @@ def update_orientation(e, persistence_length, particles_vel, dt, curvity, Dr, N,
         e /= norm[:, np.newaxis]  
         arctan = np.arctan2(e[:, 1], e[:, 0]) #returns (N-1) orientation DOF, arctan (x2,x1)
         dof = arctan[:, np.newaxis]
+    elif N == 3:
+        #deterministic part
+        i_hat = particles_vel[:, 1] * e[:, 2] - particles_vel[:, 2] * e[:, 1] #i_hat
+        j_hat = particles_vel[:, 0] * e[:, 2] - particles_vel[:, 2] * e[:, 0]
+        k_hat = particles_vel[:, 0] * e[:, 1] - particles_vel[:, 1] * e[:, 0]
+        cross_3d_1 = np.stack([i_hat, -j_hat, k_hat], axis = 1) #shape: n_particles, N
+        i_hat = e[:, 1] * cross_3d_1[:, 2] - e[:, 2] * cross_3d_1[:, 1] #i_hat
+        j_hat = e[:, 0] * cross_3d_1[:, 2] - e[:, 2] * cross_3d_1[:, 0]
+        k_hat = e[:, 0] * cross_3d_1[:, 1] - e[:, 1] * cross_3d_1[:, 0]
+        cross_3d_2 = np.stack([i_hat, -j_hat, k_hat], axis = 1) #shape: n_particles, N
+        #change = cross[:, None] * curvity[:, None] * np.array([-e[1], e[0]]).T  # shape: (n_particles, 2), vectorized so it's broadcasted
+        change = cross_3d_2 * curvity
+        # updates the e array for all particles simultaneously
+        e += change * dt  # shape: (2, n_particles)
+
+        norm = np.linalg.norm(e,axis=1)
+        e /= norm[:, np.newaxis] 
+        theta = np.arctan2(e[:, 1], e[:, 0]) 
+        phi = np.arccos(e[:, 2]) 
+        dof = np.stack([theta, phi], axis = 1) #theta, phi
+
     return dof #shape (n_particles, 2)
 
 
