@@ -48,6 +48,7 @@ def simulate_system(radius_repulsive_potential, n_particles, v_0, curvity, persi
         elif N ==3:
             cos_phi, sin_phi = np.cos(trajectories[:, i, N+1]), np.sin(trajectories[:, i, N+1])
             e = np.stack([sin_phi * cos_theta, sin_phi * sin_theta, cos_phi], axis=1) #shape e (n_particles, 3)  
+            
         #update positions and orientations
         trajectories[:, i+1, :N] = update_positions(trajectories[:, i, :N], e, params_particles, params_system, interacting=interacting, mode=mode) 
         particles_vel = (trajectories[:, i+1, :N] - trajectories[:, i, :N]) / dt #calculate velocity before the periodic boundary condition
@@ -111,21 +112,22 @@ def compute_pairwise_forces(n_particles, current_positions, radius_particles, st
     current positions shape (n_particles, N)
     radius_particles, stiffness shape (n_particles, 1)
     """ 
+    
     #some bookkeeping and a buffer
     f = np.zeros((n_particles, N))
     epsilon = 1e-10
 
-    #neighbour listin
     # Compute pairwise displacement vectors and apply periodic boundaries    
     r1, r2 = current_positions[:, np.newaxis, :], current_positions[np.newaxis, :, :] #shape (n_particles, 1, N), (1, n_particles, N), for broadcasting
-    rij = u.pbc_distance(r1, r2, boundary)  # shape  (n_particles, n_particles, N) -> 2D vector, center to center
+    rij = u.pbc_distance(r1, r2, boundary)  # shape (n_particles, n_particles, N) -> 2D vector, center to center
     #absolute distances
     rij_abs = np.linalg.norm(rij, axis=2)  # shape (n_particles, n_particles)
     np.fill_diagonal(rij_abs, np.inf) #to make sure that the force calculated on itself is 0
+    
     # Only consider interaction between particles [0,1,2] and [3:N]
     if (mode == 'Iso_oreo') or mode == 'Arrhenius':
-        rij_sub = rij[:n_potentials, n_potentials:]            # shape: (3, n_particles-3, 2)
-        rij_abs_sub = rij_abs[:n_potentials, n_potentials:]    # shape: (3, n_particles-3)
+        rij_sub = rij[:n_potentials, n_potentials:]    
+        rij_abs_sub = rij_abs[:n_potentials, n_potentials:]  
         radii_sum = radius_particles[:n_potentials] + radius_particles[n_potentials:].T  # (3, n_particles-3)
         gamma = np.where(rij_abs_sub <= radii_sum, np.exp(stiffness[:n_potentials] * (1 - rij_abs_sub / radii_sum)), 0.0)  # (3, n_particles-3)
         #harmonic
@@ -154,6 +156,7 @@ def update_orientation(e, persistence_length, particles_vel, dt, curvity, Dr, N,
     curvity: (n_particles, 1)
     """
     n_particles = e.shape[0]
+    
     if N == 2:
         #deterministic part 
         cross = particles_vel[:, 0] * e[:, 1] - particles_vel[:, 1] * e[:, 0]  # shape: (n_particles,), scalars
@@ -173,6 +176,7 @@ def update_orientation(e, persistence_length, particles_vel, dt, curvity, Dr, N,
         e /= norm[:, np.newaxis]  
         arctan = np.arctan2(e[:, 1], e[:, 0]) #returns (N-1) orientation DOF, arctan (x2,x1)
         dof = arctan[:, np.newaxis]
+
     elif N == 3:
         #deterministic part
         i_hat = particles_vel[:, 1] * e[:, 2] - particles_vel[:, 2] * e[:, 1] #i_hat
