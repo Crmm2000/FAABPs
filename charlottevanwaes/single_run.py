@@ -5,7 +5,7 @@ import Visuals as V
 # parameters system
 t_end, dt = 10, 1e-3 #check whether timesteps are sufficient, minimal 1e-3 WCA potential
 L = 100 #boxsize
-N = 3 #3d only deterministic
+N = 3 
 
 # simulation settings
 interacting = False
