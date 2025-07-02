@@ -5,7 +5,7 @@ from tqdm import tqdm
 import utils as u 
 
 # Main simulation loop
-def simulate_system(radius_repulsive_potential, n_particles, v_0, curvity, persistence_length=5, t_end = 100, dt = 1e-2, boundary = 20, stiffness = 1, interacting = False, mode = None, N = 2, mode_particles = 'ABP'):
+def simulate_system(radius_repulsive_potential, stiffness_potential, n_particles, v_0, curvity, persistence_length=5, t_end = 100, dt = 1e-2, boundary = 20, stiffness = 1, interacting = False, mode = None, N = 2, mode_particles = 'ABP'):
     # Initial settings 
     t = np.arange(0, t_end, dt) # time array
     n, timestep_end = len(t), len(t) #timesteps, time_step end tracks the timesteps for the arrhenius
@@ -23,8 +23,7 @@ def simulate_system(radius_repulsive_potential, n_particles, v_0, curvity, persi
     # Bookkeeping
     trajectories = np.zeros((n_particles, n, 2*N-1)) #shape: (n_particles, steps, DOF)
     params_particles = np.column_stack([v0, b, kappa, stiffness]) #shape (n_particles, 4)
-    #shape (n_particles, 4), stores all params for the particles, stiffness is specific for the repulsive potential
-    params_system = boundary, t_end, n_particles, persistence_length, radius_repulsive_potential, dt, n_potentials, N 
+    params_system = boundary, t_end, n_particles, persistence_length, radius_repulsive_potential, stiffness_potential, dt, n_potentials, N 
     
     # Initial conditions
     x_0 = np.random.uniform(0, boundary, size=(n_particles, N))
@@ -92,7 +91,7 @@ def update_positions(current_positions, eta, params_particles, params_system, in
     """
     #unpack values for readability
     v0, radius_particles, kappa, stiffness = (x[:, np.newaxis] for x in params_particles.T)
-    boundary, t_end, n_particles, persistence_length, radius_repulsive_potential, dt, n_potentials, N = params_system
+    boundary, t_end, n_particles, persistence_length, radius_repulsive_potential, stiffness_potential, dt, n_potentials, N = params_system
 
     #scale mobility with radius
     mobility = v0 * (1/radius_particles) #shape = (n_particles, 1)
@@ -153,7 +152,7 @@ def update_orientation(e, persistence_length, particles_vel, dt, curvity, Dr, N,
     
     if N == 2:
         #deterministic part 
-        cross = particles_vel[:, 0] * e[:, 1] - particles_vel[:, 1] * e[:, 0]  # shape: (n_particles,), scalars
+        cross = u.cross_product(particles_vel, e, N) # shape: (n_particles,), scalars
         change = - cross[:, np.newaxis] * curvity * np.array([-e[:, 1], e[:, 0]]).T # shape: (n_particles, 2)
         e += change * dt  # shape: (n_particles, N)
 
@@ -163,7 +162,6 @@ def update_orientation(e, persistence_length, particles_vel, dt, curvity, Dr, N,
             e += noise
         elif mode_particles == 'RTP':
             tumble_angle = np.random.uniform(-1, 1, size=(n_particles, N)) 
-            #Dr is the tumbling rate alpha, see solon 2016
             poisson = np.random.poisson(Dr, size = (n_particles, N)) 
             e += tumble_angle*poisson * np.sqrt(dt)
             
@@ -174,25 +172,23 @@ def update_orientation(e, persistence_length, particles_vel, dt, curvity, Dr, N,
 
     elif N == 3:
         #deterministic part
-        i_hat = particles_vel[:, 1] * e[:, 2] - particles_vel[:, 2] * e[:, 1] #i_hat
-        j_hat = particles_vel[:, 0] * e[:, 2] - particles_vel[:, 2] * e[:, 0]
-        k_hat = particles_vel[:, 0] * e[:, 1] - particles_vel[:, 1] * e[:, 0]
-        cross_3d_1 = np.stack([i_hat, -j_hat, k_hat], axis = 1) #shape: n_particles, N
-        i_hat = e[:, 1] * cross_3d_1[:, 2] - e[:, 2] * cross_3d_1[:, 1] #i_hat
-        j_hat = e[:, 0] * cross_3d_1[:, 2] - e[:, 2] * cross_3d_1[:, 0]
-        k_hat = e[:, 0] * cross_3d_1[:, 1] - e[:, 1] * cross_3d_1[:, 0]
-        cross_3d_2 = np.stack([i_hat, -j_hat, k_hat], axis = 1) #shape: n_particles, N
-        change = cross_3d_2 * curvity
+        cross_1 = u.cross_product(particles_vel, e, N)
+        cross_2 = u.cross_product(e, cross_1, N)
+        change = cross_2 * curvity
         e += change * dt  # shape: (2, n_particles)
 
-        #todo, fix stochastic part
-        
+        #stochastic part
+        if mode_particles == 'ABP':
+            e_perp_1 = np.array([-e[:, 1], e[:,0], np.zeros(n_particles)]).T #xy plane
+            noise_1 = np.sqrt(2*Dr*dt)*np.random.normal(0, 1, size = (n_particles, 1)) * e_perp_1
+            e += noise_1
+            e_perp_2 = np.array([np.zeros(n_particles), -e[:,2], e[:,1]]).T  #zy plane
+            noise_2 = np.sqrt(2*Dr*dt)*np.random.normal(0, 1, size = (n_particles, 1)) * e_perp_2
+            e += noise_2
+            
         norm = np.linalg.norm(e,axis=1)
         e /= norm[:, np.newaxis] 
         theta = np.arctan2(e[:, 1], e[:, 0]) 
         phi = np.arccos(e[:, 2]) 
         dof = np.stack([theta, phi], axis = 1) #theta, phi
     return dof #shape (n_particles, N-1)
-
-
-#todo numba, neighbour list, option for RK
