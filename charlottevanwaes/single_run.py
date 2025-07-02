@@ -1,23 +1,26 @@
-import Engine #contains engine
+import Engine 
 import pickle
-import Visuals as V #as name implies
+import Visuals as V 
 
-# parameters
-R_small_potential = 5 #size small repulsive potential, for iso oreo
+# parameters system
+t_end, dt = 10, 1e-3 #check whether timesteps are sufficient, minimal 1e-3 WCA potential
+L = 100 #boxsize
+N = 3 #3d only deterministic
+
+# simulation settings
+interacting = True
+mode = None #or: 'Iso_oreo', 'Arrhenius', for both interacting is set to false
+mode_particles = 'ABP'
+
+# parameters particles/potential
 n_particles = 100 #amount of particles in system (including potentials)
 v_0 = 10 #self propulsion speed
 curvity = -1
 stiffness = 10
 persistence_length = 5
 
-t_end, dt = 10, 1e-3 #check whether timesteps are sufficient, minimal 1e-3 WCA potential
-L = 100 #boxsize
-N = 3 #3d only deterministic
-
-interacting = True
-mode = None #or: 'Iso_oreo', 'Arrhenius', for both interacting is set to false
-mode_particles = 'ABP'
-
+# parameters potential
+R_small_potential = 5 #size small repulsive potential, for iso oreo, Arrhenius, etc
 
 # run simulation
 data = Engine.simulate_system(R_small_potential, n_particles, v_0, curvity, persistence_length, t_end, dt, L, stiffness, N = N, interacting=interacting, mode = mode, mode_particles = mode_particles)
@@ -37,4 +40,3 @@ frames_visualized = 50 #amount of timesteps (stored, see datasave param main cod
 fps = 40 #frames per second
 V.save_fig(trajectories[:,:,:N], trajectories[:,:,N-1].T, params, frames_visualized
            , fps, f'{file_name}', N = N, live = False, view = None)
-

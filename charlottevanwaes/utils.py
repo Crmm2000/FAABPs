@@ -1,7 +1,6 @@
 import numpy as np
 import sys
 
-#############################
 # Periodic boundary conditions
 def pbc_vec(states, boundary):
     # makes particle show up on other side
@@ -14,8 +13,6 @@ def pbc_distance(r_i, r_j, L):
     r_ij = r_ij - L * np.round(r_ij / L)
     return r_ij
 
-
-#############################
 # Experiments
 def setup_experiment(mode, params_particles, params_system, trajectories):
     '''
@@ -36,7 +33,7 @@ def setup_experiment(mode, params_particles, params_system, trajectories):
             if i == 2:
                 b[i] = 2*radius_repulsive_potential
         
-        #Making sure that repulsive potentials are placed at an appropriate distance, and small particles don't spawn in it
+        # Places repulsive potentials at an appropriate distance + small particles don't spawn in it
         max_iter, iter = 100000, 0
         overlap = True
         while overlap == True:
@@ -56,4 +53,3 @@ def setup_experiment(mode, params_particles, params_system, trajectories):
         params_system = boundary, t_end, n_particles, persistence_length, radius_repulsive_potential, dt, n_potentials, N
         params_particles = np.column_stack([v0, b, kappa, stiffness])
         return np.zeros((n_potentials, int(t_end/dt))), params_particles, params_system
-
