@@ -20,7 +20,7 @@ stiffness = 10
 persistence_length = 5
 
 # parameters potential
-R_small_potential = 5 #size small repulsive potential, for iso oreo
+R_small_potential = 5 #size small repulsive potential, for iso oreo, Arrhenius, etc
 
 # run simulation
 data = Engine.simulate_system(R_small_potential, n_particles, v_0, curvity, persistence_length, t_end, dt, L, stiffness, N = N, interacting=interacting, mode = mode, mode_particles = mode_particles)
