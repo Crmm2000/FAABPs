@@ -15,7 +15,7 @@ def simulate_system(radius_repulsive_potential, n_particles, v_0, curvity, persi
     b = np.ones((n_particles,1)) #particle radius #n
     kappa = np.ones((n_particles, 1)) * curvity
     stiffness = np.ones((n_particles, 1)) * stiffness
-    n_potentials = 0
+    n_potentials = 0 # sets n_potentials, don't change
 
     # Rotational diffusion
     Dr = v_0/persistence_length if persistence_length != 0 else None
