@@ -81,7 +81,6 @@ def simulate_system(radius_repulsive_potential, stiffness_potential, n_particles
                 'Params': params}
     return data
 
-####################################################
 # Equations of motion
 def update_positions(current_positions, eta, params_particles, params_system, interacting, mode):
     """
