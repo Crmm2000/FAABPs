@@ -1,5 +1,5 @@
 import numpy as np
-import time 
+from tqdm import tqdm
 
 # packages for visualisation
 import matplotlib.pyplot as plt
@@ -10,27 +10,38 @@ from IPython import display
 import imageio.v2 as imageio
 
 # creates the video using the previous render function
-def save_fig(position, orientation, params, steps_per_frame, fps, name_file, title = '', N = 2, live = False, view = None):
+def save_fig(position, orientation, data, params, steps_per_frame, fps, name_file, mode = None, title = '', N = 2, live = False, view = None):
     n = params[11] #amount of timesteps
     frames = [] #create empty list to store frames as video
-    for i in range(n): #loop over the time steps
+    for i in tqdm(range(n)): #loop over the time steps
         if i % steps_per_frame == 0: #extra condition to speed up loop to not visualize every time step
             progress = ((i) * (params[9])) #progressbar
-            fig = render(position[:, i, :], orientation[i, :], f"$t$ = {progress:.0f} $s$, {title}", params=params, N = N, live = live, view = view)
+            fig = render(position[:, i, :], orientation[i, :], data, f"$t$ = {progress:.0f} $s$, {title}", params=params, N = N, live = live, view = view, mode = mode, timestep=i)
             plt.savefig('temp_plot.png', bbox_inches='tight')
             frames.append(imageio.imread('temp_plot.png'))
             plt.close(fig)
     imageio.mimsave(f"{name_file}.mp4", frames, fps = fps) #gif instead of mp4, just change .mp4 to .gif, but mind that fps means something different
 
 #Render figures for videos
-def render(states, orientation, progress, params, N = 2, live = False, view = None):
+def render(states, orientation, data, progress, params, timestep, N = 2, live = False, view = None, mode = None):
     boundary = params[2]
     size_particles = params[3]
     if N == 2:
         #plotting formalities
         plt.figure()
-        plt.title(f'$n$ = {states.shape[0]}, $v_0$ = {params[0]}, $l_0$ = {params[7]}, $\\kappa$ = {params[1]}, $\\phi = {params[10]:.2f}$')
-        plt.suptitle(f'{progress}')
+        if mode == 'Iso_oreo':
+            P_b = data['P_b']
+            P_s = data['P_s']
+            plt.title(f'$n$ = {states.shape[0]}, $v_0$ = {params[0]}, $l_0$ = {params[7]}, $\\kappa$ = {params[1]}, $\\phi = {params[10]:.2f}$')
+            plt.suptitle(f'{progress}, N_b: {P_b[timestep]}, N_s: {P_s[timestep]}')
+        elif mode == 'Arrhenius':
+            tracking = data['Particles_trapped']
+            cumulative = data['Particles_escaped_cumulative']
+            plt.suptitle(f'{progress}, N: {tracking[timestep]}, N(t): {cumulative[timestep]}')
+            plt.title(f'$n$ = {states.shape[0]-1}, $v_0$ = {params[0]}, $l_0$ = {params[7]}, $\\kappa$ = {params[1]}')
+        else: 
+            plt.title(f'$n$ = {states.shape[0]}, $v_0$ = {params[0]}, $l_0$ = {params[7]}, $\\kappa$ = {params[1]}, $\\phi = {params[10]:.2f}$')
+            plt.suptitle(f'{progress}')
         plt.xlabel('$x_1$')
         plt.ylabel('$x_2$')
         plt.xlim([0,boundary])
@@ -40,7 +51,7 @@ def render(states, orientation, progress, params, N = 2, live = False, view = No
         orientation = np.mod(orientation, 2*np.pi)  # keeps values on circle
         orientation[orientation < 0] += 2*np.pi  # keeps values positive
         norm = mcolors.Normalize(vmin=0, vmax=2*np.pi) #normalizing for colormap
-        cmap = cm.hsv  #set colormap -> hsv is cyclic and allows for a proper separatin of colors irt the background
+        cmap = cm.twilight_shifted  #set colormap -> cyclic, allows for a proper separation of colors irt the background
 
         #plotting
         if len(states.shape) == 1: #extra line for if there is only one particles
@@ -85,3 +96,4 @@ def render(states, orientation, progress, params, N = 2, live = False, view = No
         if live == True:
             display.display(plt.gcf())
             display.clear_output(wait=True)
+
