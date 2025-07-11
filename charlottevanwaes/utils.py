@@ -3,7 +3,6 @@ import sys
 
 # Periodic boundary conditions
 def pbc_vec(states, boundary):
-    # makes particle show up on other side
     states[:] = np.mod(states[:], boundary)
     return states
 
