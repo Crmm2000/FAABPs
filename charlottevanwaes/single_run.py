@@ -5,7 +5,7 @@ import Visuals as V
 # parameters system
 t_end, dt = 10, 1e-3 #check whether timesteps are sufficient, minimal 1e-3 WCA potential
 L = 100 #boxsize
-N = 3 
+N = 2 
 
 # simulation settings
 interacting = False
@@ -13,7 +13,7 @@ mode = None #or: 'Iso_oreo', 'Arrhenius', for both interacting is set to false
 mode_particles = 'ABP' #or: RTP
 
 # parameters particles/potential
-n_particles = 1000 #amount of particles in system (including potentials)
+n_particles = 200 #amount of particles in system 
 v_0 = 10 #self propulsion speed
 curvity = -1
 stiffness = 10
