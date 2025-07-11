@@ -27,39 +27,63 @@ def simulate_system(radius_repulsive_potential, stiffness_potential, n_particles
     
     # Initial conditions
     x_0 = np.random.uniform(0, boundary, size=(n_particles, N))
+    #x_0 = [boundary/2] * N #test noise
     rotation_start = np.random.uniform(0, 2*np.pi, size=(n_particles, N-1))
     trajectories[:,0,:N] = x_0
     trajectories[:,0,N:]= rotation_start
 
     #sets experiment up if indicated, overwrites previously set initial conditions
-    if mode != None:
+    if mode == 'Iso_oreo':
         storage_occupancy, params_particles, params_system = u.setup_experiment(mode, params_particles, params_system, trajectories)
-
-    #main simulation loop
-    for i in tqdm(range(n-1)):  # Loop through timesteps
-        
-        # Position and orientation update with Euler integration (vectorized)
-        cos_theta, sin_theta = np.cos(trajectories[:, i, N]), np.sin(trajectories[:, i, N]) 
-        if N ==2:
-            e = np.stack([cos_theta, sin_theta], axis=1) #shape e (n_particles, 2)            
-        #add extra degree of freedom in orientation for 3D
-        elif N ==3:
-            cos_phi, sin_phi = np.cos(trajectories[:, i, N+1]), np.sin(trajectories[:, i, N+1])
-            e = np.stack([sin_phi * cos_theta, sin_phi * sin_theta, cos_phi], axis=1) #shape e (n_particles, 3)  
+    elif mode == 'Arrhenius':
+        particles_within_range, particles_still_trapped, n_escape, params_particles, params_system, trajectories, terminate = u.setup_experiment(mode, params_particles, params_system, trajectories)
+    
+    # Main simulation loop
+    ite = 0
+    while (ite < n-1) and (mode != 'Arrhenius' or not terminate):
+        for i in tqdm(range(n-1)):  # Loop through timesteps
             
-        #update positions and orientations
-        trajectories[:, i+1, :N] = update_positions(trajectories[:, i, :N], e, params_particles, params_system, interacting=interacting, mode=mode) 
-        particles_vel = (trajectories[:, i+1, :N] - trajectories[:, i, :N]) / dt #calculate velocity before the periodic boundary condition
-        trajectories[:, i+1, :N] = u.pbc_vec(trajectories[:, i+1, :N], boundary) #apply periodic boundary conditions
-        trajectories[:, i+1, N:] = update_orientation(e, persistence_length, particles_vel, dt=dt, curvity = kappa, Dr = Dr, N = N, mode_particles=mode_particles) #returns arctan2
+            # Position and orientation update with Euler integration (vectorized)
+            cos_theta, sin_theta = np.cos(trajectories[:, i, N]), np.sin(trajectories[:, i, N]) 
+            if N ==2:
+                e = np.stack([cos_theta, sin_theta], axis=1) #shape e (n_particles, 2)            
+            
+            #add extra degree of freedom in orientation for 3D
+            elif N ==3:
+                cos_phi, sin_phi = np.cos(trajectories[:, i, N+1]), np.sin(trajectories[:, i, N+1])
+                e = np.stack([sin_phi * cos_theta, sin_phi * sin_theta, cos_phi], axis=1) #shape e (n_particles, 3)  
+                
+            #update positions and orientations
+            trajectories[:, i+1, :N] = update_positions(trajectories[:, i, :N], e, params_particles, params_system, interacting=interacting, mode=mode) 
+            particles_vel = (trajectories[:, i+1, :N] - trajectories[:, i, :N]) / dt #calculate velocity before the periodic boundary condition
+            trajectories[:, i+1, :N] = u.pbc_vec(trajectories[:, i+1, :N], boundary) #apply periodic boundary conditions
+            trajectories[:, i+1, N:] = update_orientation(e, particles_vel, dt=dt, curvity = kappa, Dr = Dr, N = N, mode_particles=mode_particles) #returns arctan2
+            
+            #Bookkeeping probabilities 
+            if mode == 'Iso_oreo':
+                n_potentials, b = params_system[7], params_particles[:, 1]
+                #calculate occupancies repulsive potentials
+                for j in range(n_potentials):
+                    distances = np.linalg.norm(u.pbc_distance(trajectories[j, i+1, :N], trajectories[:, i+1, :N], boundary), axis=1)
+                    storage_occupancy[j][i] = len(np.where(distances < (b[j] + 1.05))[0])-1 
+            
+            #Tracking trapped particles
+            if mode == 'Arrhenius':
+                n_potentials, b = params_system[7], params_particles[:, 1]
+                distances = np.linalg.norm(u.pbc_distance(trajectories[0, i+1, :N], trajectories[:, i+1, :N], boundary), axis=1)
+                e = 1 #buffer -> adjust if you change the repulsive potential
+                particles_within_range[i+1] = len(np.where(distances < (b[0] + e))[0])-1 #checks range and small buffer
+                n_escape[np.where(distances > (b[0] + e))[0]] = 1 #calculate amount of particles leaving
+                particles_still_trapped[i+1]= (n_particles-1) - np.sum(n_escape)
+                
+                #check termination condition
+                if particles_still_trapped[i+1]== 0 or i == (n-2):
+                    terminate = True
+                    timestep_end = i+1
+                    break   
+            ite +=1
 
-        #Bookkeeping probabilities 
-        if mode == 'Iso_oreo':
-            #calculate occupancies repulsive potentials
-            for j in range(n_potentials):
-                distances = np.linalg.norm(u.pbc_distance(trajectories[j, i+1, :N], trajectories[:, i+1, :N], boundary), axis=1)
-                storage_occupancy[j] = len(np.where(distances < (b[j] + 1.1))[0])-1 
-
+    
     # Calculate filling fraction (outside of repulsive potentials)
     space_repulsive_potentials = np.sum((np.pi**(N/2)/math.gamma(N/2 + 1)) * b[:n_potentials]**N) #hypersphere
     free_box_space = boundary**N - space_repulsive_potentials #space where particles live
@@ -67,15 +91,20 @@ def simulate_system(radius_repulsive_potential, stiffness_potential, n_particles
     filling_fraction = space_particles/free_box_space 
     
     #saving data
-    data_save = 1 #space between stored timesteps
+    data_save = 100 #space between stored timesteps
     v0, b, kappa, stiffness = params_particles.T
     params = v_0, curvity, boundary, b, stiffness, t_end, n_particles, persistence_length, radius_repulsive_potential, dt, filling_fraction, int(timestep_end/data_save)
-    
     if mode == 'Iso_oreo':
         data = {'Trajectories': trajectories[:, ::data_save], #don't store all data, files get big
                 'Params': params,
-                'P_b': storage_occupancy[0],
-                'P_s': storage_occupancy[1]+storage_occupancy[2]}
+                'P_b': storage_occupancy[2],
+                'P_s': storage_occupancy[0]+storage_occupancy[1]}
+    
+    elif mode == 'Arrhenius':
+        data = {'Trajectories': trajectories[:, ::data_save], #don't store all data, files get big
+                'Params': params,
+                'Particles_trapped': particles_within_range,
+                'Particles_escaped_cumulative': particles_still_trapped}
     else: 
         data = {'Trajectories': trajectories[:, ::data_save], #don't store all data, files get big
                 'Params': params}
@@ -97,9 +126,12 @@ def update_positions(current_positions, eta, params_particles, params_system, in
     mobility[:n_potentials]=0 #makes repulsive potentials stationary
     
     #Compute forces
-    f = 0
+    f = 0 
     if interacting == True or mode != None:
-        f += compute_pairwise_forces(current_positions.shape[0], current_positions, radius_particles, stiffness, boundary, interacting=interacting, N = N, n_potentials=n_potentials, mode=mode) #shape (n_particles, N)  
+        if n_particles > 200 and mode == None:
+            f += u.neighbour_list_compute_pairwise_forces(n_particles, current_positions, radius_particles, stiffness, boundary, interacting, N)
+        else:
+            f += compute_pairwise_forces(current_positions.shape[0], current_positions, radius_particles, stiffness, boundary, interacting=interacting, N = N, n_potentials=n_potentials, mode=mode) #shape (n_particles, N)  
     return current_positions + dt * (eta * v0) + dt * mobility * f 
 
 def compute_pairwise_forces(n_particles, current_positions, radius_particles, stiffness, boundary, interacting, N, n_potentials, mode):
@@ -127,8 +159,8 @@ def compute_pairwise_forces(n_particles, current_positions, radius_particles, st
         rij_abs_sub = rij_abs[:n_potentials, n_potentials:]  
         radii_sum = radius_particles[:n_potentials] + radius_particles[n_potentials:].T  # (n_potentials, n_particles-n_potentials)
         
-        #harmonic potential
-        gamma = np.where(rij_abs_sub <= radii_sum, (stiffness[:n_potentials]/2)*(radii_sum-rij_abs_sub)**2,0.0)#np.exp(stiffness[:n_potentials] * (1 - rij_abs_sub / radii_sum)), 0.0)  # (n_potentials, n_particles-n_potentials)
+        #calculate potential force
+        gamma = np.where(rij_abs_sub<radii_sum+10,np.exp(stiffness[:n_potentials] * (1 - rij_abs_sub / radius_particles[:n_potentials])),0)  # (n_potentials, n_particles-n_potentials)
         forces = gamma[:, :, np.newaxis] * rij_sub / (rij_abs_sub[:, :, np.newaxis] + epsilon)  # (n_particles, n_particles-n_potentials, N)
         f[:n_potentials] += np.sum(forces, axis=1)  # sum over the second axis 
         f[n_potentials:] -= np.sum(forces.transpose(1, 0, 2), axis=1) #(n_particles-n_potentials, n_potentials, N)
@@ -141,7 +173,7 @@ def compute_pairwise_forces(n_particles, current_positions, radius_particles, st
     return f
 
 #Orientation update
-def update_orientation(e, persistence_length, particles_vel, dt, curvity, Dr, N, mode_particles):
+def update_orientation(e, particles_vel, dt, curvity, Dr, N, mode_particles):
     """
     shape e: (n_particles, N)
     shape particles_vel (n_particles, N)
@@ -152,7 +184,7 @@ def update_orientation(e, persistence_length, particles_vel, dt, curvity, Dr, N,
     if N == 2:
         #deterministic part 
         cross = u.cross_product(particles_vel, e, N) # shape: (n_particles,), scalars
-        change = - cross[:, np.newaxis] * curvity * np.array([-e[:, 1], e[:, 0]]).T # shape: (n_particles, 2)
+        change = -cross[:, np.newaxis] * curvity * np.array([-e[:, 1], e[:, 0]]).T # shape: (n_particles, 2)
         e += change * dt  # shape: (n_particles, N)
 
         #stochastic part
@@ -191,3 +223,4 @@ def update_orientation(e, persistence_length, particles_vel, dt, curvity, Dr, N,
         phi = np.arccos(e[:, 2]) 
         dof = np.stack([theta, phi], axis = 1) #theta, phi
     return dof #shape (n_particles, N-1)
+
